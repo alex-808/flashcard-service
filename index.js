@@ -1,6 +1,29 @@
 require('dotenv').config();
+const {
+    SQSClient,
+    ReceiveMessageCommand,
+    DeleteMessageCommand,
+} = require('@aws-sdk/client-sqs');
 const examples = require('./example');
 
+const sqsClient = new SQSClient({
+    region: process.env.AWS_REGION,
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    },
+});
+
+const queueURL = process.env.SQS_QUEUE_URL;
+
+const receiveMessageCommand = new ReceiveMessageCommand({
+    QueueUrl: queueURL,
+    MaxNumberOfMessages: 1,
+});
+
+sqsClient.send(receiveMessageCommand).then((data) => {
+    console.log('Recieved messages:', data.Messages);
+});
 const { Configuration, OpenAIApi } = require('openai');
 
 const configuration = new Configuration({
@@ -173,4 +196,4 @@ const runTest = async (input, prompt) => {
 };
 
 const prompt = promptBuilder(1);
-runTest(input, prompt);
+//runTest(input, prompt);
