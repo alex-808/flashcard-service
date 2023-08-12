@@ -5,6 +5,7 @@ const {
     DeleteMessageCommand,
 } = require('@aws-sdk/client-sqs');
 const examples = require('./example');
+const { Configuration, OpenAIApi } = require('openai');
 
 const sqsClient = new SQSClient({
     region: process.env.AWS_REGION,
@@ -19,12 +20,8 @@ const queueURL = process.env.SQS_QUEUE_URL;
 const receiveMessageCommand = new ReceiveMessageCommand({
     QueueUrl: queueURL,
     MaxNumberOfMessages: 1,
+    WaitTimeSeconds: 20,
 });
-
-sqsClient.send(receiveMessageCommand).then((data) => {
-    console.log('Recieved messages:', data.Messages);
-});
-const { Configuration, OpenAIApi } = require('openai');
 
 const configuration = new Configuration({
     apiKey: process.env.AI_API_KEY,
@@ -83,7 +80,13 @@ const print_flashcard = {
     },
 };
 
-const promptBuilder = (cardCount, topics, keywords, example, difficulty) => {
+const promptBuilder = ({
+    cardCount,
+    topics,
+    keywords,
+    example,
+    difficulty,
+}) => {
     let prompt = `The user will provide you with a set of text which they would like to print this number of flashcards: ${cardCount}. `;
     if (topics) {
         prompt += `They have indicated the topic(s) they would like the flashcards to be about are the following: ${topics.join(
@@ -121,6 +124,7 @@ const generate = async (inputText, prompt) => {
         functions: [print_flashcard, print_flashcards],
         max_tokens: 1000,
     });
+    console.log(chatCompletion.data.choices[0]);
     const { arguments } = chatCompletion.data.choices[0].message.function_call;
     const { usage } = chatCompletion.data;
     return arguments;
@@ -195,5 +199,11 @@ const runTest = async (input, prompt) => {
     console.log(results);
 };
 
-const prompt = promptBuilder(1);
-//runTest(input, prompt);
+sqsClient.send(receiveMessageCommand).then(async (data) => {
+    console.log(data.Messages[0].Body);
+    const message = JSON.parse(data.Messages[0].Body);
+    const prompt = promptBuilder(message);
+    console.log(prompt);
+    const flashcards = await generate(message.inputText, prompt);
+    console.log(flashcards);
+});
