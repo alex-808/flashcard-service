@@ -24,7 +24,7 @@ class flashcardRequest {
     }
 }
 
-let test = new flashcardRequest(example2, 1);
+let test = new flashcardRequest(example2, 5);
 test = JSON.stringify(test);
 
 const sendMessageCommand = new SendMessageCommand({

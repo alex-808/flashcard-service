@@ -124,7 +124,6 @@ const generate = async (inputText, prompt) => {
         functions: [print_flashcard, print_flashcards],
         max_tokens: 1000,
     });
-    console.log(chatCompletion.data.choices[0]);
     const { arguments } = chatCompletion.data.choices[0].message.function_call;
     const { usage } = chatCompletion.data;
     return arguments;
@@ -199,11 +198,27 @@ const runTest = async (input, prompt) => {
     console.log(results);
 };
 
-sqsClient.send(receiveMessageCommand).then(async (data) => {
-    console.log(data.Messages[0].Body);
+const generateFromQueue = async () => {
+    const data = await sqsClient.send(receiveMessageCommand);
+    console.log('called');
+    console.log(data);
+    if (!data.Messages) {
+        console.log('No messages in queue');
+        generateFromQueue();
+        return;
+    }
     const message = JSON.parse(data.Messages[0].Body);
     const prompt = promptBuilder(message);
-    console.log(prompt);
     const flashcards = await generate(message.inputText, prompt);
     console.log(flashcards);
-});
+    const deleteMessageCommand = new DeleteMessageCommand({
+        QueueUrl: queueURL,
+        ReceiptHandle: data.Messages[0].ReceiptHandle,
+    });
+    const resp = await sqsClient.send(deleteMessageCommand);
+    generateFromQueue();
+};
+generateFromQueue();
+
+// TODO remove messages from queue after processing
+// TODO set up proper error handling
