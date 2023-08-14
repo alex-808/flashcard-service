@@ -1,7 +1,7 @@
 require('dotenv').config();
 const examples = require('./example');
 const { Configuration, OpenAIApi } = require('openai');
-const { getMessage, deleteMessage } = require('./queue');
+const { getMessage, deleteMessage, sendToDLQ } = require('./queue');
 const { isValidResponse } = require('./validation');
 
 const configuration = new Configuration({
@@ -89,81 +89,75 @@ const promptBuilder = ({
 };
 
 const generate = async (inputText, prompt) => {
-    // Add support for topics, keywords, example flashcard and difficulty
-    const chatCompletion = await openai.createChatCompletion({
-        model: 'gpt-3.5-turbo',
-        messages: [
-            {
-                role: 'system',
-                content: prompt,
-            },
-            {
-                role: 'user',
-                content: `${inputText}`,
-            },
-        ],
-        functions: [print_flashcard, print_flashcards],
-        max_tokens: 1000,
-    });
-    const { arguments } = chatCompletion.data.choices[0].message.function_call;
-    const { usage } = chatCompletion.data;
-    return arguments;
-};
-
-const input = examples.example2;
-
-const runTest = async (input, prompt) => {
-    const results = {
-        failed: 0,
-        failures: [],
-    };
-    for (let i = 0; i < 10; i++) {
-        const response = await generate(input, prompt);
-        let json;
-        try {
-            json = JSON.parse(response);
-        } catch (err) {
-            console.error(err);
-        }
-
-        console.log(i);
-        console.log(json);
-        const result = isValidResponse(json);
-        // add logic to get full count of failed and successes
-        // as well as what the responses were that failed
-        if (!result) {
-            results.failed++;
-            results.failures.push(json);
-        }
+    try {
+        const chatCompletion = await openai.createChatCompletion({
+            model: 'gpt-3.5-turb',
+            messages: [
+                {
+                    role: 'system',
+                    content: prompt,
+                },
+                {
+                    role: 'user',
+                    content: `${inputText}`,
+                },
+            ],
+            functions: [print_flashcard, print_flashcards],
+            max_tokens: 1000,
+        });
+        const { arguments } =
+            chatCompletion.data.choices[0].message.function_call;
+        return arguments;
+    } catch (err) {
+        console.error(err);
     }
-    console.log(results);
 };
-
-//runTest(input, promptBuilder({ cardCount: 5 }));
 
 const generateFromQueue = async () => {
-    // TODO validate response
-    const data = await getMessage();
+    let data;
+    try {
+        data = await getMessage();
+    } catch (err) {
+        console.error(err);
+    }
     console.log('called');
     console.log(data);
+    // TODO if status code is not 200, retry
     if (!data.Messages) {
         console.log('No messages in queue');
         generateFromQueue();
         return;
     }
 
-    let message;
+    let message = data.Messages[0];
     try {
-        message = JSON.parse(data.Messages[0].Body);
+        message = JSON.parse(message.Body);
     } catch (err) {
         console.error(err);
+        sendToDLQ(message);
         generateFromQueue();
         return;
     }
 
     const prompt = promptBuilder(message);
-    const flashcards = await generate(message.inputText, prompt);
-    console.log(flashcards);
+
+    let flashcards = await generate(message.inputText, prompt);
+
+    try {
+        flashcards = JSON.parse(flashcards);
+    } catch (err) {
+        console.error(err);
+        sendToDLQ(message);
+        generateFromQueue();
+        return;
+    }
+    const isValid = isValidResponse(flashcards);
+    if (!isValid) {
+        console.error('Invalid flashcard response from API');
+        sendToDLQ(message);
+        generateFromQueue();
+        return;
+    }
     const res = await deleteMessage(data.Messages[0].ReceiptHandle);
     if (res.$metadata.httpStatusCode !== 200) {
         // TODO add retry logic
@@ -174,9 +168,10 @@ const generateFromQueue = async () => {
 
 generateFromQueue();
 
-// TODO refactor
-// TODO add validation
 // TODO set up proper error handling
+// TODO Validate response length
+// What do we do if the response has too many flashcards?
+// What do we do if the response has too few flashcards?
 // TODO add retry logic
 // TODO set up proper logging
 // TODO Add rate limiting
