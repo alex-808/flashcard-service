@@ -2,7 +2,6 @@ const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 require('dotenv').config();
 const { example2 } = require('./example');
 
-console.log(example2);
 const sqsClient = new SQSClient({
     region: process.env.AWS_REGION,
     credentials: {
@@ -24,11 +23,11 @@ class flashcardRequest {
     }
 }
 
-let test = new flashcardRequest(example2, 5);
-test = JSON.stringify(test);
+let messageBody = new flashcardRequest(example2, 5);
+messageBody = JSON.stringify(messageBody);
 
 const sendMessageCommand = new SendMessageCommand({
-    MessageBody: test,
+    MessageBody: messageBody,
     QueueUrl: queueURL,
 });
 

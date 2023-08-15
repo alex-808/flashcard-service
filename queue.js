@@ -40,7 +40,6 @@ const deleteMessageWithRetries = async (receiptHandle, retries = 0) => {
         await deleteMessage(receiptHandle);
     } catch (err) {
         if (retries < 3) {
-            console.log('Message deletion failed. Retrying...');
             await deleteMessageWithRetries(receiptHandle, retries + 1);
         } else {
             throw err;
@@ -70,7 +69,6 @@ const sendToDLQ = async (message) => {
 
 module.exports = {
     getMessage,
-    deleteMessage,
     deleteMessageWithRetries,
     sendToDLQ,
 };

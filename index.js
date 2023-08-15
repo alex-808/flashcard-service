@@ -1,5 +1,4 @@
 require('dotenv').config();
-const examples = require('./example');
 const { Configuration, OpenAIApi } = require('openai');
 const { getMessage, deleteMessageWithRetries, sendToDLQ } = require('./queue');
 const { isValidResponse, isValidMessage } = require('./validation');
@@ -113,7 +112,6 @@ const generateWithRetries = async (inputText, prompt, retries = 0) => {
         return await generate(inputText, prompt);
     } catch (err) {
         if (retries < 3) {
-            console.log('Flashcard generation failed. Retrying...');
             return await generateWithRetries(inputText, prompt, retries + 1);
         } else {
             throw err;
@@ -160,6 +158,12 @@ const generateFromQueue = async () => {
         if (!isValidResponse(flashcards)) {
             throw new Error('Invalid flashcard response from API');
         }
+        if (flashcards.length < messageBody.cardCount) {
+            throw new Error('Response has too few flashcards');
+        }
+        if (flashcards.length > messageBody.cardCount) {
+            flashcards = flashcards.slice(0, messageBody.cardCount);
+        }
     } catch (err) {
         console.error('Flashcard generation failed:', err);
         generateFromQueue();
@@ -185,8 +189,6 @@ generateFromQueue();
 // Return all the flashcards
 // What do we do if the response has too few flashcards?
 // Retry the request
-// TODO set up proper logging
-// TODO Add rate limiting
 
 // 3. Invalid response from queue deletion
 // Should be retried
