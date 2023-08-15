@@ -26,25 +26,33 @@ const getMessage = async () => {
     return res;
 };
 
-const deleteMessage = async (ReceiptHandle) => {
+const deleteMessage = async (receiptHandle) => {
     const deleteMessageCommand = new DeleteMessageCommand({
         QueueUrl: queueURL,
-        ReceiptHandle,
+        ReceiptHandle: receiptHandle,
     });
     const res = await sqsClient.send(deleteMessageCommand);
     return res;
 };
 
-const sendToDLQ = async (message) => {
-    console.log('Sending to DLQ, message:', message);
+const deleteMessageWithRetries = async (receiptHandle, retries = 0) => {
     try {
-        await deleteMessage(message.ReceiptHandle);
+        deleteMessage(receiptHandle);
     } catch (err) {
-        console.error(err);
+        if (retries < 3) {
+            console.error(err);
+            console.log('Retrying...');
+            deleteMessageWithRetries(receiptHandle, retries + 1);
+        } else {
+            console.error(err);
+            console.error('Unable to delete message');
+        }
     }
+};
 
+const sendToDLQ = async (message) => {
     const sendMessageCommand = new SendMessageCommand({
-        QueueUrl: process.env.SQS_DLQ_URL,
+        QueueUrl: dlqURL,
         MessageBody: JSON.stringify(message),
     });
 
@@ -52,10 +60,19 @@ const sendToDLQ = async (message) => {
         await sqsClient.send(sendMessageCommand);
     } catch (err) {
         console.error(err);
+        return;
+    }
+
+    try {
+        await deleteMessageWithRetries(message.ReceiptHandle);
+    } catch (err) {
+        console.error(err);
     }
 };
+
 module.exports = {
     getMessage,
     deleteMessage,
+    deleteMessageWithRetries,
     sendToDLQ,
 };

@@ -37,6 +37,22 @@ const isValidResponse = (response) => {
     return true;
 };
 
+const isValidMessage = (message) => {
+    if (typeof message !== 'object') {
+        console.error('Message is not an object:', message);
+        return false;
+    }
+    if (!message.inputText) {
+        console.error('Message does not have "inputText" property:', message);
+        return false;
+    }
+    if (typeof message.inputText !== 'string') {
+        console.error('Message inputText is not a string:', message.inputText);
+        return false;
+    }
+    return true;
+};
 module.exports = {
     isValidResponse,
+    isValidMessage,
 };

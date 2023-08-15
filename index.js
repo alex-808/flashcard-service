@@ -1,8 +1,8 @@
 require('dotenv').config();
 const examples = require('./example');
 const { Configuration, OpenAIApi } = require('openai');
-const { getMessage, deleteMessage, sendToDLQ } = require('./queue');
-const { isValidResponse } = require('./validation');
+const { getMessage, deleteMessageWithRetries, sendToDLQ } = require('./queue');
+const { isValidResponse, isValidMessage } = require('./validation');
 
 const configuration = new Configuration({
     apiKey: process.env.AI_API_KEY,
@@ -19,7 +19,7 @@ const print_flashcards = {
                 type: 'number',
                 description: 'length of the flashcards array',
             },
-            flashcards: {
+            flashcard: {
                 type: 'array',
                 description: 'An array of one or more flashcards',
                 items: {
@@ -89,27 +89,38 @@ const promptBuilder = ({
 };
 
 const generate = async (inputText, prompt) => {
+    const chatCompletion = await openai.createChatCompletion({
+        model: 'gpt-3.5-turbo',
+        messages: [
+            {
+                role: 'system',
+                content: prompt,
+            },
+            {
+                role: 'user',
+                content: `${inputText}`,
+            },
+        ],
+        functions: [print_flashcard, print_flashcards],
+        max_tokens: 1000,
+    });
+    const { arguments } = chatCompletion.data.choices[0].message.function_call;
+    return arguments;
+};
+
+const generateWithRetries = async (inputText, prompt, retries = 0) => {
     try {
-        const chatCompletion = await openai.createChatCompletion({
-            model: 'gpt-3.5-turb',
-            messages: [
-                {
-                    role: 'system',
-                    content: prompt,
-                },
-                {
-                    role: 'user',
-                    content: `${inputText}`,
-                },
-            ],
-            functions: [print_flashcard, print_flashcards],
-            max_tokens: 1000,
-        });
-        const { arguments } =
-            chatCompletion.data.choices[0].message.function_call;
-        return arguments;
+        return await generate(inputText, prompt);
     } catch (err) {
-        console.error(err);
+        if (retries < 3) {
+            console.error(err);
+            console.log('Retrying...');
+            return generateWithRetries(inputText, prompt, retries + 1);
+        } else {
+            console.error(err);
+            console.error('Unable to generate flashcards');
+            return;
+        }
     }
 };
 
@@ -118,20 +129,24 @@ const generateFromQueue = async () => {
     try {
         data = await getMessage();
     } catch (err) {
-        console.error(err);
+        console.error('Unable to get message from queue:', err);
+        setTimeout(generateFromQueue, 10000);
+        return;
     }
-    console.log('called');
-    console.log(data);
-    // TODO if status code is not 200, retry
+
     if (!data.Messages) {
-        console.log('No messages in queue');
+        console.error('No messages in queue');
         generateFromQueue();
         return;
     }
 
     let message = data.Messages[0];
+    let messageBody;
     try {
-        message = JSON.parse(message.Body);
+        messageBody = JSON.parse(message.Body);
+        if (!isValidMessage(messageBody)) {
+            throw new Error('Invalid message from queue');
+        }
     } catch (err) {
         console.error(err);
         sendToDLQ(message);
@@ -139,46 +154,50 @@ const generateFromQueue = async () => {
         return;
     }
 
-    const prompt = promptBuilder(message);
+    const prompt = promptBuilder(messageBody);
 
-    let flashcards = await generate(message.inputText, prompt);
-
+    let flashcards;
     try {
+        flashcards = await generateWithRetries(messageBody.inputText, prompt);
         flashcards = JSON.parse(flashcards);
+        if (!isValidResponse(flashcards)) {
+            throw new Error('Invalid flashcard response from API');
+        }
     } catch (err) {
-        console.error(err);
-        sendToDLQ(message);
+        console.error('Flashcard generation failed:', err);
         generateFromQueue();
         return;
     }
-    const isValid = isValidResponse(flashcards);
-    if (!isValid) {
-        console.error('Invalid flashcard response from API');
-        sendToDLQ(message);
+
+    try {
+        await deleteMessageWithRetries(message.ReceiptHandle);
+    } catch (err) {
+        console.error('Unable to delete message:', err);
         generateFromQueue();
         return;
     }
-    const res = await deleteMessage(data.Messages[0].ReceiptHandle);
-    if (res.$metadata.httpStatusCode !== 200) {
-        // TODO add retry logic
-    }
-    console.log(res);
+    // TODO send flashcards to database
+    console.log(flashcards);
     generateFromQueue();
 };
 
 generateFromQueue();
 
-// TODO set up proper error handling
 // TODO Validate response length
 // What do we do if the response has too many flashcards?
+// Return all the flashcards
 // What do we do if the response has too few flashcards?
+// Retry the request
 // TODO add retry logic
 // TODO set up proper logging
 // TODO Add rate limiting
 
 // Failure points:
 // 1. Invalid response from API
-// 2. Invalid response from queue
-// 3. Invalid response from validation
-// 4. Invalid response from queue deletion
-// 5. Invalid response from queue message retrieval
+// Should be retried
+// 2. Invalid response from validation of message
+// Should be sent to DLQ
+// 3. Invalid response from queue deletion
+// Should be retried
+// 4. Invalid response from queue message retrieval
+// Should be retried after a delay
