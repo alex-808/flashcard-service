@@ -19,7 +19,7 @@ const print_flashcards = {
                 type: 'number',
                 description: 'length of the flashcards array',
             },
-            flashcard: {
+            flashcards: {
                 type: 'array',
                 description: 'An array of one or more flashcards',
                 items: {
@@ -113,13 +113,10 @@ const generateWithRetries = async (inputText, prompt, retries = 0) => {
         return await generate(inputText, prompt);
     } catch (err) {
         if (retries < 3) {
-            console.error(err);
-            console.log('Retrying...');
-            return generateWithRetries(inputText, prompt, retries + 1);
+            console.log('Flashcard generation failed. Retrying...');
+            return await generateWithRetries(inputText, prompt, retries + 1);
         } else {
-            console.error(err);
-            console.error('Unable to generate flashcards');
-            return;
+            throw err;
         }
     }
 };
@@ -188,16 +185,8 @@ generateFromQueue();
 // Return all the flashcards
 // What do we do if the response has too few flashcards?
 // Retry the request
-// TODO add retry logic
 // TODO set up proper logging
 // TODO Add rate limiting
 
-// Failure points:
-// 1. Invalid response from API
-// Should be retried
-// 2. Invalid response from validation of message
-// Should be sent to DLQ
 // 3. Invalid response from queue deletion
 // Should be retried
-// 4. Invalid response from queue message retrieval
-// Should be retried after a delay

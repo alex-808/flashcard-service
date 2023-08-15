@@ -37,15 +37,13 @@ const deleteMessage = async (receiptHandle) => {
 
 const deleteMessageWithRetries = async (receiptHandle, retries = 0) => {
     try {
-        deleteMessage(receiptHandle);
+        await deleteMessage(receiptHandle);
     } catch (err) {
         if (retries < 3) {
-            console.error(err);
-            console.log('Retrying...');
-            deleteMessageWithRetries(receiptHandle, retries + 1);
+            console.log('Message deletion failed. Retrying...');
+            await deleteMessageWithRetries(receiptHandle, retries + 1);
         } else {
-            console.error(err);
-            console.error('Unable to delete message');
+            throw err;
         }
     }
 };
