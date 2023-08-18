@@ -31,6 +31,6 @@ const sendMessageCommand = new SendMessageCommand({
     QueueUrl: queueURL,
 });
 
-sqsClient.send(sendMessageCommand).then((data) => {
-    console.log('Data', data);
+sqsClient.send(sendMessageCommand).then((response) => {
+    console.log('Queue sendMessage response:', response);
 });

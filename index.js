@@ -121,13 +121,7 @@ const generateWithRetries = async (inputText, prompt, retries = 0) => {
 
 const generateFromQueue = async () => {
     let data;
-    try {
-        data = await getMessage();
-    } catch (err) {
-        console.error('Unable to get message from queue:', err);
-        setTimeout(generateFromQueue, 10000);
-        return;
-    }
+    data = await getMessage();
 
     if (!data.Messages) {
         console.error('No messages in queue');
@@ -183,12 +177,3 @@ const generateFromQueue = async () => {
 };
 
 generateFromQueue();
-
-// TODO Validate response length
-// What do we do if the response has too many flashcards?
-// Return all the flashcards
-// What do we do if the response has too few flashcards?
-// Retry the request
-
-// 3. Invalid response from queue deletion
-// Should be retried

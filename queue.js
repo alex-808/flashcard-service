@@ -4,6 +4,7 @@ const {
     SendMessageCommand,
     DeleteMessageCommand,
 } = require('@aws-sdk/client-sqs');
+const retry = require('retry');
 
 const sqsClient = new SQSClient({
     region: process.env.AWS_REGION,
@@ -17,13 +18,28 @@ const queueURL = process.env.SQS_QUEUE_URL;
 const dlqURL = process.env.SQS_DLQ_URL;
 
 const getMessage = async () => {
-    const receiveMessageCommand = new ReceiveMessageCommand({
-        QueueUrl: queueURL,
-        MaxNumberOfMessages: 1,
-        WaitTimeSeconds: 20,
+    return new Promise((resolve, reject) => {
+        const receiveMessageCommand = new ReceiveMessageCommand({
+            QueueUrl: queueURL,
+            MaxNumberOfMessages: 1,
+            WaitTimeSeconds: 20,
+        });
+
+        const operation = retry.operation();
+
+        let res;
+        operation.attempt(async (currentAttempt) => {
+            try {
+                res = await sqsClient.send(receiveMessageCommand);
+                resolve(res);
+            } catch (err) {
+                if (operation.retry(err)) {
+                    return;
+                }
+            }
+            reject(operation.mainError());
+        });
     });
-    const res = await sqsClient.send(receiveMessageCommand);
-    return res;
 };
 
 const deleteMessage = async (receiptHandle) => {
