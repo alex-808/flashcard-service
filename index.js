@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Configuration, OpenAIApi } = require('openai');
-const { getMessage, deleteMessageWithRetries, sendToDLQ } = require('./queue');
+const { getMessage, deleteMessageWithRetries } = require('./queue');
 const { isValidResponse, isValidMessage } = require('./validation');
 
 const configuration = new Configuration({
@@ -138,7 +138,6 @@ const generateFromQueue = async () => {
         }
     } catch (err) {
         console.error(err);
-        sendToDLQ(message);
         generateFromQueue();
         return;
     }

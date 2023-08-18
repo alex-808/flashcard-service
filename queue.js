@@ -63,28 +63,7 @@ const deleteMessageWithRetries = async (receiptHandle, retries = 0) => {
     }
 };
 
-const sendToDLQ = async (message) => {
-    const sendMessageCommand = new SendMessageCommand({
-        QueueUrl: dlqURL,
-        MessageBody: JSON.stringify(message),
-    });
-
-    try {
-        await sqsClient.send(sendMessageCommand);
-    } catch (err) {
-        console.error(err);
-        return;
-    }
-
-    try {
-        await deleteMessageWithRetries(message.ReceiptHandle);
-    } catch (err) {
-        console.error(err);
-    }
-};
-
 module.exports = {
     getMessage,
     deleteMessageWithRetries,
-    sendToDLQ,
 };
