@@ -52,7 +52,7 @@ const deleteMessage = async (receiptHandle) => {
 const deleteMessageWithRetries = async (receiptHandle) => {
     return new Promise((resolve, reject) => {
         const operation = retry.operation({
-            retries: 3,
+            retries: 5,
         });
 
         operation.attempt(async (currentAttempt) => {
@@ -70,6 +70,6 @@ const deleteMessageWithRetries = async (receiptHandle) => {
 };
 
 module.exports = {
-    getMessage: getMessage,
+    getMessage,
     deleteMessageWithRetries,
 };

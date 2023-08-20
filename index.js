@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Configuration, OpenAIApi } = require('openai');
 const { getMessage, deleteMessageWithRetries } = require('./queue');
 const { isValidFlashcardResponse, isValidMessage } = require('./validation');
+const retry = require('retry');
 
 const configuration = new Configuration({
     apiKey: process.env.AI_API_KEY,
@@ -88,16 +89,23 @@ const generate = async (inputText, prompt) => {
     return arguments;
 };
 
-const generateWithRetries = async (inputText, prompt, retries = 0) => {
-    try {
-        return await generate(inputText, prompt);
-    } catch (err) {
-        if (retries < 3) {
-            return await generateWithRetries(inputText, prompt, retries + 1);
-        } else {
-            throw err;
-        }
-    }
+const generateWithRetries = async (inputText, prompt) => {
+    return new Promise((resolve, reject) => {
+        const operation = retry.operation({
+            retries: 5,
+        });
+        operation.attempt(async (currentAttempt) => {
+            try {
+                const response = await generate(inputText, prompt);
+                resolve(response);
+            } catch (err) {
+                if (operation.retry(err)) {
+                    return;
+                }
+            }
+            reject(operation.mainError());
+        });
+    });
 };
 
 const consume = async (msgHandler, errorHandler) => {
