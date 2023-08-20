@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Configuration, OpenAIApi } = require('openai');
 const { getMessage, deleteMessageWithRetries } = require('./queue');
-const { isValidResponse, isValidMessage } = require('./validation');
+const { isValidFlashcardResponse, isValidMessage } = require('./validation');
 
 const configuration = new Configuration({
     apiKey: process.env.AI_API_KEY,
@@ -36,25 +36,6 @@ const print_flashcards = {
                         },
                     },
                 },
-            },
-        },
-    },
-};
-const print_flashcard = {
-    name: 'print_flashcard',
-    description: 'Print a flashcard object',
-    parameters: {
-        type: 'object',
-        properties: {
-            front: {
-                type: 'string',
-                description:
-                    'Front content of a flashcard containing a question. Quotation marks should be escaped with a forward slash.',
-            },
-            back: {
-                type: 'string',
-                description:
-                    'Back content of a flashcard containing the answer to the question. Quotation marks should be escaped with a forward slash.',
             },
         },
     },
@@ -100,7 +81,7 @@ const generate = async (inputText, prompt) => {
                 content: `${inputText}`,
             },
         ],
-        functions: [print_flashcard, print_flashcards],
+        functions: [print_flashcards],
         max_tokens: 1000,
     });
     const { arguments } = chatCompletion.data.choices[0].message.function_call;
@@ -119,60 +100,55 @@ const generateWithRetries = async (inputText, prompt, retries = 0) => {
     }
 };
 
-const generateFromQueue = async () => {
-    let data;
-    data = await getMessage();
-
-    if (!data.Messages) {
-        console.error('No messages in queue');
-        generateFromQueue();
-        return;
-    }
-
-    let message = data.Messages[0];
-    let messageBody;
-    try {
-        messageBody = JSON.parse(message.Body);
-        if (!isValidMessage(messageBody)) {
-            throw new Error('Invalid message from queue');
+const consume = async (msgHandler, errorHandler) => {
+    let message = await getMessage();
+    if (!message) {
+        console.log('No messages in queue');
+        consume(msgHandler, errorHandler);
+    } else {
+        try {
+            await msgHandler(message);
+        } catch (err) {
+            errorHandler(err);
         }
-    } catch (err) {
-        console.error(err);
-        generateFromQueue();
-        return;
+        consume(msgHandler, errorHandler);
     }
+};
 
-    const prompt = promptBuilder(messageBody);
+const messageHandler = async (msg) => {
+    if (!isValidMessage(msg)) throw new Error('Invalid message from queue');
+    const msgBody = JSON.parse(msg.Body);
+    const prompt = promptBuilder(msgBody);
 
     let flashcards;
     try {
-        flashcards = await generateWithRetries(messageBody.inputText, prompt);
-        flashcards = JSON.parse(flashcards);
-        if (!isValidResponse(flashcards)) {
+        const response = await generateWithRetries(msgBody.inputText, prompt);
+        if (!isValidFlashcardResponse(response)) {
             throw new Error('Invalid flashcard response from API');
         }
-        if (flashcards.length < messageBody.cardCount) {
+        flashcards = JSON.parse(response).flashcards;
+
+        if (flashcards.length < msgBody.cardCount) {
             throw new Error('Response has too few flashcards');
         }
-        if (flashcards.length > messageBody.cardCount) {
-            flashcards = flashcards.slice(0, messageBody.cardCount);
+        if (flashcards.length > msgBody.cardCount) {
+            flashcards = flashcards.slice(0, msgBody.cardCount);
         }
     } catch (err) {
-        console.error('Flashcard generation failed:', err);
-        generateFromQueue();
-        return;
+        throw new Error(`Flashcard generation failed: ${err.message}`);
     }
 
     try {
-        await deleteMessageWithRetries(message.ReceiptHandle);
+        await deleteMessageWithRetries(msg.ReceiptHandle);
     } catch (err) {
-        console.error('Unable to delete message:', err);
-        generateFromQueue();
-        return;
+        throw new Error(`Unable to delete message: ${err}`);
     }
     // TODO send flashcards to database
     console.log(flashcards);
-    generateFromQueue();
 };
 
-generateFromQueue();
+const errorHandler = (err) => {
+    console.error('ERROR: ', err.message);
+};
+
+consume(messageHandler, errorHandler);

@@ -8,51 +8,54 @@ const isValidCard = (card) => {
     );
 };
 
-const isValidResponse = (response) => {
+const isValidFlashcardResponse = (response) => {
+    try {
+        response = JSON.parse(response);
+    } catch (err) {
+        return false;
+    }
+
     if (typeof response !== 'object') {
-        console.error('Response is not an object:', response);
         return false;
     }
     if (!response.flashcards) {
-        console.error(
-            'Response does not have "flashcards" property:',
-            response
-        );
+        console.error(response);
         return false;
     }
 
     const { flashcards } = response;
 
     if (!Array.isArray(flashcards)) {
-        console.error('Flashcards is not an array');
         return false;
     }
 
     for (let card of flashcards) {
         if (!isValidCard(card)) {
-            console.error('Invalid card:', card);
             return false;
         }
     }
     return true;
 };
 
-const isValidMessage = (message) => {
-    if (typeof message !== 'object') {
-        console.error('Message is not an object:', message);
+const isValidMessage = (msg) => {
+    try {
+        msgBody = JSON.parse(msg.Body);
+    } catch (err) {
+        console.error(err);
         return false;
     }
-    if (!message.inputText) {
-        console.error('Message does not have "inputText" property:', message);
+    if (typeof msgBody !== 'object') {
         return false;
     }
-    if (typeof message.inputText !== 'string') {
-        console.error('Message inputText is not a string:', message.inputText);
+    if (!msgBody.inputText) {
+        return false;
+    }
+    if (typeof msgBody.inputText !== 'string') {
         return false;
     }
     return true;
 };
 module.exports = {
-    isValidResponse,
+    isValidFlashcardResponse,
     isValidMessage,
 };

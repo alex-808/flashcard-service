@@ -1,7 +1,6 @@
 const {
     SQSClient,
     ReceiveMessageCommand,
-    SendMessageCommand,
     DeleteMessageCommand,
 } = require('@aws-sdk/client-sqs');
 const retry = require('retry');
@@ -15,14 +14,13 @@ const sqsClient = new SQSClient({
 });
 
 const queueURL = process.env.SQS_QUEUE_URL;
-const dlqURL = process.env.SQS_DLQ_URL;
 
 const getMessage = async () => {
     return new Promise((resolve, reject) => {
         const receiveMessageCommand = new ReceiveMessageCommand({
             QueueUrl: queueURL,
             MaxNumberOfMessages: 1,
-            WaitTimeSeconds: 20,
+            WaitTimeSeconds: 2,
         });
 
         const operation = retry.operation();
@@ -31,7 +29,7 @@ const getMessage = async () => {
         operation.attempt(async (currentAttempt) => {
             try {
                 res = await sqsClient.send(receiveMessageCommand);
-                resolve(res);
+                resolve(res.Messages ? res.Messages[0] : null);
             } catch (err) {
                 if (operation.retry(err)) {
                     return;
@@ -64,6 +62,6 @@ const deleteMessageWithRetries = async (receiptHandle, retries = 0) => {
 };
 
 module.exports = {
-    getMessage,
+    getMessage: getMessage,
     deleteMessageWithRetries,
 };
