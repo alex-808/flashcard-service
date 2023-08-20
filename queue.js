@@ -49,16 +49,24 @@ const deleteMessage = async (receiptHandle) => {
     return res;
 };
 
-const deleteMessageWithRetries = async (receiptHandle, retries = 0) => {
-    try {
-        await deleteMessage(receiptHandle);
-    } catch (err) {
-        if (retries < 3) {
-            await deleteMessageWithRetries(receiptHandle, retries + 1);
-        } else {
-            throw err;
-        }
-    }
+const deleteMessageWithRetries = async (receiptHandle) => {
+    return new Promise((resolve, reject) => {
+        const operation = retry.operation({
+            retries: 3,
+        });
+
+        operation.attempt(async (currentAttempt) => {
+            try {
+                await deleteMessage(receiptHandle);
+                resolve();
+            } catch (err) {
+                if (operation.retry(err)) {
+                    return;
+                }
+            }
+            reject(operation.mainError());
+        });
+    });
 };
 
 module.exports = {
