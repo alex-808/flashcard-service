@@ -108,21 +108,6 @@ const generateWithRetries = async (inputText, prompt) => {
     });
 };
 
-const consume = async (msgHandler, errorHandler) => {
-    let message = await getMessage();
-    if (!message) {
-        console.log('No messages in queue');
-        consume(msgHandler, errorHandler);
-    } else {
-        try {
-            await msgHandler(message);
-        } catch (err) {
-            errorHandler(err);
-        }
-        consume(msgHandler, errorHandler);
-    }
-};
-
 const messageHandler = async (msg) => {
     if (!isValidMessage(msg)) throw new Error('Invalid message from queue');
     const msgBody = JSON.parse(msg.Body);
@@ -159,4 +144,24 @@ const errorHandler = (err) => {
     console.error('ERROR: ', err.message);
 };
 
-consume(messageHandler, errorHandler);
+const main = async () => {
+    while (true) {
+        let message;
+        try {
+            message = await getMessage();
+        } catch (err) {
+            console.error(err);
+            continue;
+        }
+        if (!message) {
+            console.log('No messages in queue');
+            continue;
+        }
+        try {
+            await messageHandler(message);
+        } catch (err) {
+            errorHandler(err);
+        }
+    }
+};
+main();

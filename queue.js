@@ -23,7 +23,9 @@ const getMessage = async () => {
             WaitTimeSeconds: 2,
         });
 
-        const operation = retry.operation();
+        const operation = retry.operation({
+            retries: 7,
+        });
 
         let res;
         operation.attempt(async (currentAttempt) => {
