@@ -41,7 +41,6 @@ const isValidMessage = (msg) => {
     try {
         msgBody = JSON.parse(msg.Body);
     } catch (err) {
-        console.error(err);
         return false;
     }
     if (typeof msgBody !== 'object') {

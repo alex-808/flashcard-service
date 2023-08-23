@@ -4,6 +4,11 @@ const {
     DeleteMessageCommand,
 } = require('@aws-sdk/client-sqs');
 const retry = require('retry');
+const {
+    CustomError,
+    UNABLE_TO_DELETE_MESSAGE,
+    UNABLE_TO_RETRIEVE_MESSAGES,
+} = require('./errors');
 
 const sqsClient = new SQSClient({
     region: process.env.AWS_REGION,
@@ -14,6 +19,7 @@ const sqsClient = new SQSClient({
 });
 
 const queueURL = process.env.SQS_QUEUE_URL;
+const retries = 5;
 
 const getMessage = async () => {
     return new Promise((resolve, reject) => {
@@ -24,7 +30,7 @@ const getMessage = async () => {
         });
 
         const operation = retry.operation({
-            retries: 7,
+            retries: retries,
         });
 
         let res;
@@ -37,7 +43,12 @@ const getMessage = async () => {
                     return;
                 }
             }
-            reject(operation.mainError());
+            reject(
+                new CustomError(
+                    UNABLE_TO_RETRIEVE_MESSAGES,
+                    operation.mainError()
+                )
+            );
         });
     });
 };
@@ -54,7 +65,7 @@ const deleteMessage = async (receiptHandle) => {
 const deleteMessageWithRetries = async (receiptHandle) => {
     return new Promise((resolve, reject) => {
         const operation = retry.operation({
-            retries: 5,
+            retries: retries,
         });
 
         operation.attempt(async (currentAttempt) => {
@@ -66,7 +77,9 @@ const deleteMessageWithRetries = async (receiptHandle) => {
                     return;
                 }
             }
-            reject(operation.mainError());
+            reject(
+                new CustomError(UNABLE_TO_DELETE_MESSAGE, operation.mainError())
+            );
         });
     });
 };

@@ -3,6 +3,14 @@ const { Configuration, OpenAIApi } = require('openai');
 const { getMessage, deleteMessageWithRetries } = require('./queue');
 const { isValidFlashcardResponse, isValidMessage } = require('./validation');
 const retry = require('retry');
+const {
+    CustomError,
+    INVALID_MESSAGE,
+    INVALID_FLASHCARD_RESPONSE,
+    TOO_FEW_FLASHCARDS,
+    NO_MESSAGES_IN_QUEUE,
+    FLASHCARD_GENERATION_FAILED,
+} = require('./errors');
 
 const configuration = new Configuration({
     apiKey: process.env.AI_API_KEY,
@@ -109,39 +117,36 @@ const generateWithRetries = async (inputText, prompt) => {
 };
 
 const messageHandler = async (msg) => {
-    if (!isValidMessage(msg)) throw new Error('Invalid message from queue');
+    if (!isValidMessage(msg)) throw new CustomError(INVALID_MESSAGE, msg);
     const msgBody = JSON.parse(msg.Body);
     const prompt = promptBuilder(msgBody);
 
-    let flashcards;
+    let response;
     try {
-        const response = await generateWithRetries(msgBody.inputText, prompt);
-        if (!isValidFlashcardResponse(response)) {
-            throw new Error('Invalid flashcard response from API');
-        }
-        flashcards = JSON.parse(response).flashcards;
-
-        if (flashcards.length < msgBody.cardCount) {
-            throw new Error('Response has too few flashcards');
-        }
-        if (flashcards.length > msgBody.cardCount) {
-            flashcards = flashcards.slice(0, msgBody.cardCount);
-        }
+        response = await generateWithRetries(msgBody.inputText, prompt);
     } catch (err) {
-        throw new Error(`Flashcard generation failed: ${err.message}`);
+        throw new CustomError(FLASHCARD_GENERATION_FAILED, err.message);
     }
 
-    try {
-        await deleteMessageWithRetries(msg.ReceiptHandle);
-    } catch (err) {
-        throw new Error(`Unable to delete message: ${err}`);
-    }
+    if (!isValidFlashcardResponse(response))
+        throw new CustomError(INVALID_FLASHCARD_RESPONSE, response);
+
+    let flashcards = JSON.parse(response).flashcards;
+
+    if (flashcards.length < msgBody.cardCount)
+        throw new CustomError(TOO_FEW_FLASHCARDS, flashcards);
+
+    if (flashcards.length > msgBody.cardCount)
+        flashcards = flashcards.slice(0, msgBody.cardCount);
+
+    await deleteMessageWithRetries(msg.ReceiptHandle);
     // TODO send flashcards to database
     console.log(flashcards);
 };
 
 const errorHandler = (err) => {
     console.error('ERROR: ', err.message);
+    console.error('DETAILS:', err.details);
 };
 
 const main = async () => {
@@ -150,11 +155,11 @@ const main = async () => {
         try {
             message = await getMessage();
         } catch (err) {
-            console.error(err);
+            errorHandler(err);
             continue;
         }
         if (!message) {
-            console.log('No messages in queue');
+            console.log(NO_MESSAGES_IN_QUEUE);
             continue;
         }
         try {
