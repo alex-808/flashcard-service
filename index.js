@@ -111,7 +111,12 @@ const generateWithRetries = async (inputText, prompt) => {
                     return;
                 }
             }
-            reject(operation.mainError());
+            reject(
+                new CustomError(
+                    FLASHCARD_GENERATION_FAILED,
+                    operation.mainError()
+                )
+            );
         });
     });
 };
@@ -121,12 +126,7 @@ const messageHandler = async (msg) => {
     const msgBody = JSON.parse(msg.Body);
     const prompt = promptBuilder(msgBody);
 
-    let response;
-    try {
-        response = await generateWithRetries(msgBody.inputText, prompt);
-    } catch (err) {
-        throw new CustomError(FLASHCARD_GENERATION_FAILED, err.message);
-    }
+    const response = await generateWithRetries(msgBody.inputText, prompt);
 
     if (!isValidFlashcardResponse(response))
         throw new CustomError(INVALID_FLASHCARD_RESPONSE, response);
