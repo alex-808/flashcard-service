@@ -11,6 +11,7 @@ const {
     NO_MESSAGES_IN_QUEUE,
     FLASHCARD_GENERATION_FAILED,
 } = require('./errors');
+const { createDBClient, addFlashcards } = require('./database');
 
 const configuration = new Configuration({
     apiKey: process.env.AI_API_KEY,
@@ -140,8 +141,7 @@ const messageHandler = async (msg) => {
         flashcards = flashcards.slice(0, msgBody.cardCount);
 
     await deleteMessageWithRetries(msg.ReceiptHandle);
-    // TODO send flashcards to database
-    console.log(flashcards);
+    await addFlashcards(dbClient, flashcards);
 };
 
 const errorHandler = (err) => {
@@ -149,7 +149,9 @@ const errorHandler = (err) => {
     console.error('DETAILS:', err.details);
 };
 
+let dbClient;
 const main = async () => {
+    dbClient = await createDBClient();
     while (true) {
         let message;
         try {
