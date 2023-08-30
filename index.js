@@ -152,6 +152,7 @@ const errorHandler = (err) => {
 let dbClient;
 const main = async () => {
     dbClient = await createDBClient();
+
     while (true) {
         let message;
         try {
