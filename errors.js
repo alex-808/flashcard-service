@@ -13,6 +13,7 @@ const NO_MESSAGES_IN_QUEUE = 'No messages in queue';
 const FLASHCARD_GENERATION_FAILED = 'Flashcard generation failed';
 const UNABLE_TO_RETRIEVE_MESSAGES = 'Unable to retrieve messages';
 const UNABLE_TO_CONNECT_TO_DB = 'Unable to connect to database';
+const UNABLE_TO_ADD_FLASHCARDS_TO_DB = 'Unable to add flashcards to database';
 
 module.exports = {
     CustomError: CustomError,
@@ -24,4 +25,5 @@ module.exports = {
     FLASHCARD_GENERATION_FAILED: FLASHCARD_GENERATION_FAILED,
     UNABLE_TO_RETRIEVE_MESSAGES: UNABLE_TO_RETRIEVE_MESSAGES,
     UNABLE_TO_CONNECT_TO_DB: UNABLE_TO_CONNECT_TO_DB,
+    UNABLE_TO_ADD_FLASHCARDS_TO_DB: UNABLE_TO_ADD_FLASHCARDS_TO_DB,
 };

@@ -1,6 +1,10 @@
 const { MongoClient } = require('mongodb');
 const retry = require('retry');
-const { CustomError, UNABLE_TO_CONNECT_TO_DB } = require('./errors');
+const {
+    CustomError,
+    UNABLE_TO_CONNECT_TO_DB,
+    UNABLE_TO_ADD_FLASHCARDS_TO_DB,
+} = require('./errors');
 require('dotenv').config();
 
 async function createDBClient() {
@@ -8,7 +12,7 @@ async function createDBClient() {
     const client = new MongoClient(uri);
 
     return new Promise((resolve, reject) => {
-        const operation = retry.operation();
+        const operation = retry.operation({ retries: 10 });
         operation.attempt(async (currentAttempt) => {
             try {
                 await client.connect();
@@ -33,7 +37,29 @@ async function addFlashcards(client, flashCards) {
     return result;
 }
 
+async function addFlashcardsWithRetries(client, flashCards) {
+    return new Promise((resolve, reject) => {
+        const operation = retry.operation({ retries: 5 });
+        operation.attempt(async (currentAttempt) => {
+            try {
+                const result = await addFlashcards(client, flashCards);
+                resolve(result);
+            } catch (err) {
+                if (operation.retry(err)) {
+                    return;
+                }
+            }
+            reject(
+                new CustomError(
+                    UNABLE_TO_ADD_FLASHCARDS_TO_DB,
+                    operation.mainError()
+                )
+            );
+        });
+    });
+}
+
 module.exports = {
     createDBClient,
-    addFlashcards,
+    addFlashcardsWithRetries,
 };
