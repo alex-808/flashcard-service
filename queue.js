@@ -3,12 +3,11 @@ const {
     ReceiveMessageCommand,
     DeleteMessageCommand,
 } = require('@aws-sdk/client-sqs');
-const retry = require('retry');
 const {
-    CustomError,
     UNABLE_TO_DELETE_MESSAGE,
     UNABLE_TO_RETRIEVE_MESSAGES,
 } = require('./errors');
+const { withRetries } = require('./utils');
 
 const sqsClient = new SQSClient({
     region: process.env.AWS_REGION,
@@ -22,36 +21,20 @@ const queueURL = process.env.SQS_QUEUE_URL;
 const retries = 5;
 
 const getMessage = async () => {
-    return new Promise((resolve, reject) => {
-        const receiveMessageCommand = new ReceiveMessageCommand({
-            QueueUrl: queueURL,
-            MaxNumberOfMessages: 1,
-            WaitTimeSeconds: 2,
-        });
-
-        const operation = retry.operation({
-            retries: retries,
-        });
-
-        let res;
-        operation.attempt(async (currentAttempt) => {
-            try {
-                res = await sqsClient.send(receiveMessageCommand);
-                resolve(res.Messages ? res.Messages[0] : null);
-            } catch (err) {
-                if (operation.retry(err)) {
-                    return;
-                }
-            }
-            reject(
-                new CustomError(
-                    UNABLE_TO_RETRIEVE_MESSAGES,
-                    operation.mainError()
-                )
-            );
-        });
+    const receiveMessageCommand = new ReceiveMessageCommand({
+        QueueUrl: queueURL,
+        MaxNumberOfMessages: 1,
+        WaitTimeSeconds: 2,
     });
+    const res = await sqsClient.send(receiveMessageCommand);
+    return res.Messages ? res.Messages[0] : null;
 };
+
+const getMessageWithRetries = withRetries({
+    func: getMessage,
+    retries: retries,
+    err: UNABLE_TO_RETRIEVE_MESSAGES,
+});
 
 const deleteMessage = async (receiptHandle) => {
     const deleteMessageCommand = new DeleteMessageCommand({
@@ -62,29 +45,13 @@ const deleteMessage = async (receiptHandle) => {
     return res;
 };
 
-const deleteMessageWithRetries = async (receiptHandle) => {
-    return new Promise((resolve, reject) => {
-        const operation = retry.operation({
-            retries: retries,
-        });
-
-        operation.attempt(async (currentAttempt) => {
-            try {
-                await deleteMessage(receiptHandle);
-                resolve();
-            } catch (err) {
-                if (operation.retry(err)) {
-                    return;
-                }
-            }
-            reject(
-                new CustomError(UNABLE_TO_DELETE_MESSAGE, operation.mainError())
-            );
-        });
-    });
-};
+const deleteMessageWithRetries = withRetries({
+    func: deleteMessage,
+    retries: retries,
+    err: UNABLE_TO_DELETE_MESSAGE,
+});
 
 module.exports = {
-    getMessage,
+    getMessageWithRetries,
     deleteMessageWithRetries,
 };

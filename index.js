@@ -1,8 +1,7 @@
 require('dotenv').config();
 const { Configuration, OpenAIApi } = require('openai');
-const { getMessage, deleteMessageWithRetries } = require('./queue');
+const { getMessageWithRetries, deleteMessageWithRetries } = require('./queue');
 const { isValidFlashcardResponse, isValidMessage } = require('./validation');
-const retry = require('retry');
 const {
     CustomError,
     INVALID_MESSAGE,
@@ -11,7 +10,11 @@ const {
     NO_MESSAGES_IN_QUEUE,
     FLASHCARD_GENERATION_FAILED,
 } = require('./errors');
-const { createDBClient, addFlashcardsWithRetries } = require('./database');
+const {
+    createDBClientWithRetries,
+    addFlashcardsWithRetries,
+} = require('./database');
+const { withRetries } = require('./utils');
 
 const configuration = new Configuration({
     apiKey: process.env.AI_API_KEY,
@@ -98,29 +101,11 @@ const generate = async (inputText, prompt) => {
     return arguments;
 };
 
-const generateWithRetries = async (inputText, prompt) => {
-    return new Promise((resolve, reject) => {
-        const operation = retry.operation({
-            retries: 5,
-        });
-        operation.attempt(async (currentAttempt) => {
-            try {
-                const response = await generate(inputText, prompt);
-                resolve(response);
-            } catch (err) {
-                if (operation.retry(err)) {
-                    return;
-                }
-            }
-            reject(
-                new CustomError(
-                    FLASHCARD_GENERATION_FAILED,
-                    operation.mainError()
-                )
-            );
-        });
-    });
-};
+const generateWithRetries = withRetries({
+    func: generate,
+    retries: 5,
+    err: FLASHCARD_GENERATION_FAILED,
+});
 
 const messageHandler = async (msg) => {
     if (!isValidMessage(msg)) throw new CustomError(INVALID_MESSAGE, msg);
@@ -152,7 +137,7 @@ const errorHandler = (err) => {
 let dbClient;
 const main = async () => {
     try {
-        dbClient = await createDBClient();
+        dbClient = await createDBClientWithRetries();
     } catch (err) {
         errorHandler(err);
         // process will exit and container will restart
@@ -162,7 +147,7 @@ const main = async () => {
     while (true) {
         let message;
         try {
-            message = await getMessage();
+            message = await getMessageWithRetries();
         } catch (err) {
             errorHandler(err);
             continue;
